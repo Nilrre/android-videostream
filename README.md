@@ -92,6 +92,15 @@ When you set the display mode to *SIZE_FIT*, MjpegViewer will display the video 
 
 ![](http://i.imgur.com/ZwqBjeP.jpg)
 
+
+# Authentication
+
+Another Start method is available to authenticate the HTTP connection to the video stream
+```
+mv.Start(String url, String username, String password);
+```
+
+
 # Event Handling
 ```java
 public class MainActivity extends AppCompatActivity {
