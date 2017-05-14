@@ -10,22 +10,24 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 import java.io.IOException;
+import java.net.Authenticator;
 import java.net.HttpURLConnection;
+import java.net.PasswordAuthentication;
 import java.net.URL;
 
 /**
  * Created by YJ Kim on 2017-02-23.
  */
 
-public class MjpegView extends SurfaceView implements SurfaceHolder.Callback{
+public class MjpegView extends SurfaceView implements SurfaceHolder.Callback {
     // Mjpeg State
-    public enum State{
+    public enum State {
         DISCONNECTED,
         CONNECTION_PROGRESS,
         CONNECTED,
         CONNECTION_ERROR,
         STOPPING_PROGRESS
-    };
+    }
 
     public final static int SIZE_FIT = 1;
     public final static int SIZE_FULL = 2;
@@ -34,27 +36,32 @@ public class MjpegView extends SurfaceView implements SurfaceHolder.Callback{
     private MjpegViewThread thread = null;
     private State state;
     private Handler handler = null;
+
+    private String username = null;
+    private String password = null;
+
+
     private MjpegInputStream mIn = null;
     private DoRead StreamReader = null;
     private boolean suspending = false;
 
-    public MjpegView(Context context, AttributeSet attrs){
-        super(context ,attrs);
+    public MjpegView(Context context, AttributeSet attrs) {
+        super(context, attrs);
         mHolder = getHolder();
         mHolder.addCallback(this);
         state = State.DISCONNECTED;
         setKeepScreenOn(true);
     }
 
-    private void SetThread(){
+    private void SetThread() {
         Log.d("State : ", "Set Thread");
-        if(thread == null){
+        if (thread == null) {
             thread = new MjpegViewThread(mHolder, this);
-            thread.mCallback = new MjpegCallback(){
+            thread.mCallback = new MjpegCallback() {
                 @Override
-                public void onStateChange(int s){
+                public void onStateChange(int s) {
                     state = State.values()[s];
-                    if(state == State.CONNECTION_ERROR){
+                    if (state == State.CONNECTION_ERROR) {
                         mIn = null;
                     }
                     alertState();
@@ -63,41 +70,56 @@ public class MjpegView extends SurfaceView implements SurfaceHolder.Callback{
         }
     }
 
-    public void Stop(){
+    public void Stop() {
         Log.d("State : ", "Stop");
         state = State.STOPPING_PROGRESS;
         alertState();
 
-        if(thread != null){
+        if (thread != null) {
             thread.StopRunning();
             boolean retry = true;
-            while(retry){
-                try{
+            while (retry) {
+                try {
                     thread.join();
                     retry = false;
-                }catch (InterruptedException e) {
+                } catch (InterruptedException e) {
                 }
             }
             thread = null;
         }
-        if(mIn != null){
-            try{
+        if (mIn != null) {
+            try {
                 mIn.close();
-            }catch (IOException e){}
+            } catch (IOException e) {
+            }
         }
         mIn = null;
 
-        try{
+        try {
             StreamReader.cancel(true);
             suspending = false;
-        }catch (Exception e){}
+        } catch (Exception e) {
+        }
 
         state = State.DISCONNECTED;
         alertState();
     }
 
-    public void SetDisplayMode(int s){
+    public void SetDisplayMode(int s) {
         thread.displayMode = s;
+    }
+
+    public void Start(String url, String username, String password) {
+
+        this.username = username;
+        this.password = password;
+        Stop();
+        if(!suspending) {
+            SetThread();
+            StreamReader = new DoRead();
+            StreamReader.execute(url);
+        }
+
     }
 
     public void Start(String url, Handler parent_handler){
@@ -143,10 +165,20 @@ public class MjpegView extends SurfaceView implements SurfaceHolder.Callback{
                 state = State.CONNECTION_PROGRESS;
                 alertState();
 
+                if (username != null && password != null) {
+                    Authenticator.setDefault(new Authenticator() {
+                        protected PasswordAuthentication getPasswordAuthentication() {
+                            return new PasswordAuthentication(username, password.toCharArray());
+                        }
+                    });
+                }
+
+
                 URL obj = new URL(urls[0]);
                 HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(5000);
+                conn.setUseCaches(false);
 
                 if(conn.getResponseCode() != 200){
                     state = State.CONNECTION_ERROR;
